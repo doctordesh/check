@@ -2,44 +2,113 @@ package check
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"testing"
 )
 
-// Assert fails the test if the condition is false.
-func Assert(tb testing.TB, condition bool, msg string, v ...interface{}) {
-	if !condition {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Printf("\033[31m%s:%d: "+msg+"\033[39m\n\n", append([]interface{}{filepath.Base(file), line}, v...)...)
-		tb.FailNow()
-	}
+var out io.Writer = os.Stdout
+
+type TestingHarness interface {
+	FailNow()
 }
 
-// OK fails the test if an err is not nil.
-func OK(tb testing.TB, err error) {
-	if err != nil {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Printf("\033[31m%s:%d: unexpected error: %s\033[39m\n\n", filepath.Base(file), line, err.Error())
-		tb.FailNow()
-	}
-}
+//
+// OK
+//
 
-// NotOK fails the test if an err is nil.
-func NotOK(tb testing.TB, err error, msg string) {
+func OK(tb TestingHarness, err error) {
 	if err == nil {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Printf("\033[31m%s:%d: expected error: %s\033[39m\n\n", filepath.Base(file), line, msg)
-		tb.FailNow()
+		return
 	}
+
+	p(tb, "unexpected error: %s", err.Error())
 }
 
-// Equals fails the test if exp is not equal to act.
-func Equals(tb testing.TB, exp, act interface{}) {
-	if !reflect.DeepEqual(exp, act) {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Printf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n", filepath.Base(file), line, exp, act)
-		tb.FailNow()
+func OKWithMessage(tb TestingHarness, err error, msg string, v ...interface{}) {
+	if err == nil {
+		return
 	}
+
+	p(tb, "unexpected error: %s - %s", err.Error(), fmt.Sprintf(msg, v...))
+}
+
+//
+// NotOK
+//
+func NotOK(tb TestingHarness, err error) {
+	if err != nil {
+		return
+	}
+
+	p(tb, "expected error but got nil")
+}
+
+func NotOKWithMessage(tb TestingHarness, err error, msg string, v ...interface{}) {
+	if err != nil {
+		return
+	}
+
+	p(tb, "expected error but got nil - %s", fmt.Sprintf(msg, v...))
+}
+
+//
+// Assert
+//
+
+func Assert(tb TestingHarness, condition bool) {
+	if condition {
+		return
+	}
+
+	p(tb, "condition not met")
+}
+
+func AssertWithMessage(tb TestingHarness, condition bool, msg string, v ...interface{}) {
+	if condition {
+		return
+	}
+
+	p(tb, "condition not met - %s", fmt.Sprintf(msg, v...))
+}
+
+//
+// Equals
+//
+
+func Equals(tb TestingHarness, exp, act interface{}) {
+	if reflect.DeepEqual(exp, act) {
+		return
+	}
+
+	p(tb, "\n\texp: %#v\n\tgot: %#v", exp, act)
+}
+
+func EqualsWithMessage(tb TestingHarness, exp, act interface{}, msg string, v ...interface{}) {
+	if reflect.DeepEqual(exp, act) {
+		return
+	}
+
+	p(tb, "\n\texp: %#v\n\tgot: %#v\n\t%s", exp, act, fmt.Sprintf(msg, v...))
+}
+
+//
+// Helpers
+//
+
+// p is the function that actually outputs the text
+func p(tb TestingHarness, s string, v ...interface{}) {
+	_, file, line, _ := runtime.Caller(2)
+	msg := fmt.Sprintf(s, v...)
+	msg = "%s:%d: " + msg
+	fmt.Fprintf(
+		out,
+		colorsStart+msg+colorsEnd,
+		filepath.Base(file),
+		line,
+	)
+	fmt.Fprintf(out, "\n\n")
+	tb.FailNow()
 }
